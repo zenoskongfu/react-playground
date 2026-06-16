@@ -107,15 +107,21 @@ export const PlaygroundContext = createContext<PlaygroundContextValue>({
 
 const STORAGE_KEY = 'vscode-web-playground-workspace-v2'
 
+const isStaleWorkspace = (files: Files) => {
+  const filePaths = Object.keys(files)
+  const hasLegacyFlatTemplate = filePaths.includes('App.tsx') || filePaths.includes('main.tsx')
+  const hasStaleTemplate = Object.values(files).some((file) =>
+    file.value.includes('@ts-nocheck'),
+  )
+  return hasLegacyFlatTemplate || hasStaleTemplate
+}
+
 const getFilesFromStorage = () => {
   try {
     const cached = window.localStorage.getItem(STORAGE_KEY)
     if (!cached) return undefined
     const files = JSON.parse(cached) as Files
-    const hasStaleTemplate = Object.values(files).some((file) =>
-      file.value.includes('@ts-nocheck'),
-    )
-    return hasStaleTemplate ? undefined : files
+    return isStaleWorkspace(files) ? undefined : files
   } catch (error) {
     console.error(error)
     return undefined
@@ -126,7 +132,8 @@ const getFilesFromUrl = () => {
   try {
     if (!window.location.hash) return undefined
     const hash = uncompress(window.location.hash.slice(1))
-    return JSON.parse(hash) as Files
+    const files = JSON.parse(hash) as Files
+    return isStaleWorkspace(files) ? undefined : files
   } catch (error) {
     console.error(error)
     return undefined
