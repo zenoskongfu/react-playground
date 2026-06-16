@@ -1,7 +1,41 @@
-import { PropsWithChildren, createContext, useEffect, useMemo, useState } from 'react'
-import { initFiles, readOnlyFilePaths } from './files'
-import { compress, fileName2Language, normalizePath, uncompress } from './utils'
+/**
+ * PlaygroundContext.tsx — 全局状态容器
+ *
+ * 这个文件承担两个职责：
+ *
+ * 1. 类型导出（Type Hub）
+ *    项目中所有跨文件共享的类型都定义在这里，其他文件通过 import type 引入，
+ *    避免类型定义散落在各处。这是整个项目的"类型注册表"。
+ *
+ * 2. Provider 组合（Service Composition）
+ *    PlaygroundProvider 把 4 个 service hook 的返回值组合成一个统一的 Context，
+ *    所有子组件通过 useContext(PlaygroundContext) 读取它们需要的状态。
+ *
+ * 设计参考：VSCode OSS 的 IInstantiationService（服务注册/注入容器）。
+ * 这里用 React Context 模拟相同的模式——把多个独立服务的能力"注入"给整个组件树。
+ *
+ * ─── 分层关系 ────────────────────────────────────────────────────────────────
+ *
+ *   PlaygroundProvider（这里）
+ *     ├── useWorkspaceFiles    文件管理 + 持久化
+ *     ├── useLayoutState       UI 布局状态
+ *     ├── useAiAssistant       AI 交互 + WorkspaceEdit 审查
+ *     └── useCommands          命令注册表
+ *         ↓
+ *   PlaygroundContext.Provider  ← 组合后的统一接口
+ *         ↓
+ *   所有子组件通过 useContext 消费
+ */
 
+import { PropsWithChildren, createContext } from 'react'
+import { useWorkspaceFiles } from './workbench/services/workspace/useWorkspaceFiles'
+import { useLayoutState } from './workbench/services/layout/useLayoutState'
+import { useAiAssistant } from './workbench/services/ai/useAiAssistant'
+import { useCommands } from './workbench/services/commands/useCommands'
+
+// ─── 类型定义 ─────────────────────────────────────────────────────────────────
+
+/** 编译器和持久化使用的文件格式（精简版，无 UI 字段） */
 export interface File {
   name: string
   value: string
@@ -9,6 +43,7 @@ export interface File {
   dirty?: boolean
 }
 
+/** key 为文件路径的文件映射表 */
 export interface Files {
   [key: string]: File
 }
@@ -17,29 +52,36 @@ export type Theme = 'light' | 'dark'
 export type ActivityView = 'explorer' | 'search' | 'source-control' | 'extensions' | 'ai'
 export type PanelView = 'preview' | 'problems' | 'output'
 
+/** 运行时文件对象，包含 UI 所需的额外字段（dirty、readonly） */
 export interface WorkspaceFile {
   path: string
   name: string
   value: string
   language: string
-  readonly?: boolean
-  dirty?: boolean
+  readonly?: boolean  // 只读文件（如 import-map.json），不允许编辑
+  dirty?: boolean     // 是否有未保存的改动（显示文件名旁的 * 号）
 }
 
+/** 文件树节点，同时表示文件夹和文件 */
 export interface WorkspaceTreeNode {
   path: string
   name: string
   type: 'file' | 'folder'
-  children?: WorkspaceTreeNode[]
-  file?: WorkspaceFile
+  children?: WorkspaceTreeNode[]  // 只有 folder 类型才有
+  file?: WorkspaceFile            // 只有 file 类型才有
 }
 
+/** AI 变更中单个文件的前后内容对比 */
 export interface WorkspaceChange {
   path: string
   before: string
   after: string
 }
 
+/**
+ * WorkspaceEdit：AI 生成的一组文件变更，等待用户在 diff 编辑器里审查。
+ * 对应 VSCode 的 vscode.WorkspaceEdit API 概念。
+ */
 export interface WorkspaceEdit {
   id: string
   title: string
@@ -53,46 +95,13 @@ export interface AiMessage {
   content: string
 }
 
+/** 命令注册表中的单条命令 */
 export interface WorkbenchCommand {
   id: string
   title: string
-  category: string
-  keybinding?: string
+  category: string          // 命令面板里的分组标题
+  keybinding?: string       // 显示用的快捷键文字（如 '⌘J'），不参与实际绑定
   run: () => void
-}
-
-interface PlaygroundContextValue {
-  files: Files
-  workspaceFiles: Record<string, WorkspaceFile>
-  tree: WorkspaceTreeNode[]
-  openTabs: string[]
-  selectedFileName: string
-  activeActivity: ActivityView
-  activePanel: PanelView
-  panelVisible: boolean
-  theme: Theme
-  commands: WorkbenchCommand[]
-  commandPaletteOpen: boolean
-  aiMessages: AiMessage[]
-  pendingEdit: WorkspaceEdit | null
-  output: string[]
-  setTheme: (theme: Theme) => void
-  setActiveActivity: (view: ActivityView) => void
-  setActivePanel: (view: PanelView) => void
-  setPanelVisible: (visible: boolean) => void
-  setCommandPaletteOpen: (visible: boolean) => void
-  setSelectedFileName: (fileName: string) => void
-  setFiles: (files: Files) => void
-  addFile: (fileName: string) => void
-  removeFile: (fileName: string) => void
-  updateFileName: (oldFileName: string, newFileName: string) => void
-  updateFileValue: (fileName: string, value: string) => void
-  formatFile: (fileName: string) => void
-  closeTab: (fileName: string) => void
-  executeCommand: (id: string) => void
-  askAi: (action: AiAction) => void
-  applyWorkspaceEdit: () => void
-  discardWorkspaceEdit: () => void
 }
 
 export type AiAction =
@@ -102,471 +111,149 @@ export type AiAction =
   | 'fix-error'
   | 'refactor-file'
 
+// ─── Context 接口 ─────────────────────────────────────────────────────────────
+
+/**
+ * PlaygroundContextValue：所有子组件能从 Context 读到的完整接口。
+ * 把 4 个 service hook 的公共 API 合并在一起，对消费方透明。
+ */
+interface PlaygroundContextValue {
+  // ── 来自 useWorkspaceFiles ──
+  files: Files
+  workspaceFiles: Record<string, WorkspaceFile>
+  tree: WorkspaceTreeNode[]
+  openTabs: string[]
+  selectedFileName: string
+  setTheme: (theme: Theme) => void
+  setSelectedFileName: (fileName: string) => void
+  setFiles: (files: Files) => void
+  addFile: (fileName: string) => void
+  removeFile: (fileName: string) => void
+  updateFileName: (oldFileName: string, newFileName: string) => void
+  updateFileValue: (fileName: string, value: string) => void
+  formatFile: (fileName: string) => void
+  closeTab: (fileName: string) => void
+  // ── 来自 useLayoutState ──
+  activeActivity: ActivityView
+  activePanel: PanelView
+  panelVisible: boolean
+  theme: Theme
+  commandPaletteOpen: boolean
+  setActiveActivity: (view: ActivityView) => void
+  setActivePanel: (view: PanelView) => void
+  setPanelVisible: (visible: boolean) => void
+  setCommandPaletteOpen: (visible: boolean) => void
+  // ── 来自 useAiAssistant ──
+  aiMessages: AiMessage[]
+  pendingEdit: WorkspaceEdit | null
+  output: string[]
+  askAi: (action: AiAction) => void
+  applyWorkspaceEdit: () => void
+  discardWorkspaceEdit: () => void
+  // ── 来自 useCommands ──
+  commands: WorkbenchCommand[]
+  executeCommand: (id: string) => void
+}
+
+// createContext 的默认值只在没有 Provider 包裹时使用（一般不会发生），
+// 用 as 断言跳过完整初始化，只提供一个最低限度的默认值方便 TypeScript 满意
 export const PlaygroundContext = createContext<PlaygroundContextValue>({
   selectedFileName: 'src/App.tsx',
 } as PlaygroundContextValue)
 
-const STORAGE_KEY = 'vscode-web-playground-workspace-v2'
+// ─── Provider ────────────────────────────────────────────────────────────────
 
-const isStaleWorkspace = (files: Files) => {
-  const filePaths = Object.keys(files)
-  const hasLegacyFlatTemplate = filePaths.includes('App.tsx') || filePaths.includes('main.tsx')
-  const hasStaleTemplate = Object.values(files).some((file) =>
-    file.value.includes('@ts-nocheck'),
-  )
-  const importMap = files['import-map.json']?.value || ''
-  const hasLegacyImportMap = importMap.includes('"react-dom/client": "https://esm.sh/react-dom@18.2.0"')
-  const hasLegacyMainEntry = files['src/main.tsx']?.value.includes("import ReactDOM from 'react-dom/client'") || false
-  return hasLegacyFlatTemplate || hasStaleTemplate || hasLegacyImportMap || hasLegacyMainEntry
-}
-
-const getFilesFromStorage = () => {
-  try {
-    const cached = window.localStorage.getItem(STORAGE_KEY)
-    if (!cached) return undefined
-    const files = JSON.parse(cached) as Files
-    return isStaleWorkspace(files) ? undefined : files
-  } catch (error) {
-    console.error(error)
-    return undefined
-  }
-}
-
-const getFilesFromUrl = () => {
-  try {
-    if (!window.location.hash) return undefined
-    const hash = uncompress(window.location.hash.slice(1))
-    const files = JSON.parse(hash) as Files
-    return isStaleWorkspace(files) ? undefined : files
-  } catch (error) {
-    console.error(error)
-    return undefined
-  }
-}
-
-const fileNameFromPath = (path: string) => path.split('/').pop() || path
-
-const createWorkspaceFile = (path: string, value = ''): WorkspaceFile => {
-  const normalizedPath = normalizePath(path)
-  return {
-    path: normalizedPath,
-    name: fileNameFromPath(normalizedPath),
-    value,
-    language: fileName2Language(normalizedPath),
-    readonly: readOnlyFilePaths.includes(normalizedPath),
-  }
-}
-
-const filesToWorkspace = (files: Files) => {
-  return Object.keys(files).reduce<Record<string, WorkspaceFile>>((acc, path) => {
-    const normalizedPath = normalizePath(path)
-    acc[normalizedPath] = {
-      ...createWorkspaceFile(normalizedPath),
-      value: files[path].value,
-      dirty: files[path].dirty,
-    }
-    return acc
-  }, {})
-}
-
-const workspaceToFiles = (workspaceFiles: Record<string, WorkspaceFile>): Files => {
-  return Object.keys(workspaceFiles).reduce<Files>((acc, path) => {
-    const file = workspaceFiles[path]
-    acc[path] = {
-      name: path,
-      value: file.value,
-      language: file.language,
-      dirty: file.dirty,
-    }
-    return acc
-  }, {})
-}
-
-const buildTree = (workspaceFiles: Record<string, WorkspaceFile>) => {
-  const root: WorkspaceTreeNode[] = []
-  const folders = new Map<string, WorkspaceTreeNode[]>()
-  folders.set('', root)
-
-  Object.values(workspaceFiles)
-    .sort((a, b) => a.path.localeCompare(b.path))
-    .forEach((file) => {
-      const parts = file.path.split('/')
-      let parentPath = ''
-      parts.slice(0, -1).forEach((part) => {
-        const currentPath = parentPath ? `${parentPath}/${part}` : part
-        const parent = folders.get(parentPath) || root
-        let folder = parent.find((node) => node.path === currentPath)
-        if (!folder) {
-          folder = {
-            path: currentPath,
-            name: part,
-            type: 'folder',
-            children: [],
-          }
-          parent.push(folder)
-          folders.set(currentPath, folder.children || [])
-        }
-        parentPath = currentPath
-      })
-
-      const parent = folders.get(parentPath) || root
-      parent.push({
-        path: file.path,
-        name: file.name,
-        type: 'file',
-        file,
-      })
-    })
-
-  const sortNodes = (nodes: WorkspaceTreeNode[]) => {
-    nodes.sort((a, b) => {
-      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
-      return a.name.localeCompare(b.name)
-    })
-    nodes.forEach((node) => {
-      if (node.children) sortNodes(node.children)
-    })
-  }
-  sortNodes(root)
-  return root
-}
-
-const makeEditId = () => Math.random().toString(36).slice(2, 10)
-
+/**
+ * PlaygroundProvider：把 4 个 service hook 组合为统一的 Context 值。
+ *
+ * 组合时传入的"slice"对象：
+ *   每个 hook 只接收自己真正需要的那部分状态/setter，
+ *   而不是整个 workspace 或 layout 对象。
+ *   好处：依赖关系显式可见，避免某个 hook 悄悄读取它不应该依赖的状态。
+ *
+ * 循环导入说明：
+ *   useWorkspaceFiles → workbenchEditor（runtime import，需要 releaseModel）
+ *   workbenchEditor   → PlaygroundContext（TypeScript type import，编译后被抹除）
+ *   PlaygroundContext  → useWorkspaceFiles（runtime import）
+ *   ──
+ *   workbenchEditor 对 PlaygroundContext 的 import 是纯类型，运行时不存在，
+ *   所以模块加载顺序不会形成死锁，不是真正的循环依赖。
+ */
 export const PlaygroundProvider = (props: PropsWithChildren) => {
-  const [workspaceFiles, setWorkspaceFiles] = useState<Record<string, WorkspaceFile>>(() =>
-    filesToWorkspace(getFilesFromUrl() || getFilesFromStorage() || initFiles),
-  )
-  const [selectedFileName, setSelectedFileNameState] = useState('src/App.tsx')
-  const [openTabs, setOpenTabs] = useState(['src/App.tsx'])
-  const [theme, setTheme] = useState<Theme>('dark')
-  const [activeActivity, setActiveActivity] = useState<ActivityView>('explorer')
-  const [activePanel, setActivePanel] = useState<PanelView>('preview')
-  const [panelVisible, setPanelVisible] = useState(true)
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
-  const [aiMessages, setAiMessages] = useState<AiMessage[]>([
+  const workspace = useWorkspaceFiles()
+  const layout = useLayoutState()
+
+  // 把 workspace 和 layout 里 AI 需要的部分传给 useAiAssistant
+  const ai = useAiAssistant(
     {
-      id: 'welcome',
-      role: 'assistant',
-      content: '我会基于当前文件生成 WorkspaceEdit，并先进入 Diff Review。',
+      workspaceFiles: workspace.workspaceFiles,
+      selectedFileName: workspace.selectedFileName,
+      setWorkspaceFiles: workspace.setWorkspaceFiles,
+      setOpenTabs: workspace.setOpenTabs,
+      setSelectedFileNameRaw: workspace.setSelectedFileNameRaw,
     },
-  ])
-  const [pendingEdit, setPendingEdit] = useState<WorkspaceEdit | null>(null)
-  const [output, setOutput] = useState<string[]>([
-    'VSCode-like services initialized with local adapter.',
-    'Extension host mock registered: commands, webview, workspace edit.',
-  ])
-
-  const files = useMemo(() => workspaceToFiles(workspaceFiles), [workspaceFiles])
-  const tree = useMemo(() => buildTree(workspaceFiles), [workspaceFiles])
-
-  const setSelectedFileName = (fileName: string) => {
-    const normalizedPath = normalizePath(fileName)
-    if (!workspaceFiles[normalizedPath]) return
-    setSelectedFileNameState(normalizedPath)
-    setOpenTabs((tabs) => (tabs.includes(normalizedPath) ? tabs : [...tabs, normalizedPath]))
-  }
-
-  const updateFileValue = (fileName: string, value: string) => {
-    const normalizedPath = normalizePath(fileName)
-    setWorkspaceFiles((current) => {
-      const file = current[normalizedPath]
-      if (!file || file.readonly) return current
-      return {
-        ...current,
-        [normalizedPath]: {
-          ...file,
-          value,
-          dirty: true,
-        },
-      }
-    })
-  }
-
-  const formatFile = (fileName: string) => {
-    const normalizedPath = normalizePath(fileName)
-    setWorkspaceFiles((current) => {
-      const file = current[normalizedPath]
-      if (!file || file.readonly) return current
-      return {
-        ...current,
-        [normalizedPath]: {
-          ...file,
-          value: file.value.trimEnd() ? `${file.value.trimEnd()}\n` : file.value,
-          dirty: true,
-        },
-      }
-    })
-  }
-
-  const setFiles = (nextFiles: Files) => {
-    setWorkspaceFiles(filesToWorkspace(nextFiles))
-  }
-
-  const addFile = (fileName: string) => {
-    const normalizedPath = normalizePath(fileName)
-    if (workspaceFiles[normalizedPath]) {
-      setSelectedFileName(normalizedPath)
-      return
-    }
-    setWorkspaceFiles((current) => ({
-      ...current,
-      [normalizedPath]: createWorkspaceFile(normalizedPath),
-    }))
-    setSelectedFileNameState(normalizedPath)
-    setOpenTabs((tabs) => [...tabs, normalizedPath])
-  }
-
-  const removeFile = (fileName: string) => {
-    const normalizedPath = normalizePath(fileName)
-    const file = workspaceFiles[normalizedPath]
-    if (!file || file.readonly) return
-    setWorkspaceFiles((current) => {
-      const next = { ...current }
-      delete next[normalizedPath]
-      return next
-    })
-    setOpenTabs((tabs) => tabs.filter((tab) => tab !== normalizedPath))
-    if (selectedFileName === normalizedPath) {
-      setSelectedFileNameState('src/App.tsx')
-    }
-  }
-
-  const updateFileName = (oldFileName: string, newFileName: string) => {
-    const oldPath = normalizePath(oldFileName)
-    const newPath = normalizePath(newFileName)
-    const file = workspaceFiles[oldPath]
-    if (!file || file.readonly || !newPath || workspaceFiles[newPath]) return
-
-    setWorkspaceFiles((current) => {
-      const next = { ...current }
-      delete next[oldPath]
-      next[newPath] = {
-        ...createWorkspaceFile(newPath, file.value),
-        dirty: true,
-      }
-      return next
-    })
-    setOpenTabs((tabs) => tabs.map((tab) => (tab === oldPath ? newPath : tab)))
-    if (selectedFileName === oldPath) {
-      setSelectedFileNameState(newPath)
-    }
-  }
-
-  const closeTab = (fileName: string) => {
-    const normalizedPath = normalizePath(fileName)
-    setOpenTabs((tabs) => {
-      const next = tabs.filter((tab) => tab !== normalizedPath)
-      if (selectedFileName === normalizedPath) {
-        setSelectedFileNameState(next[next.length - 1] || 'src/App.tsx')
-      }
-      return next.length ? next : ['src/App.tsx']
-    })
-  }
-
-  const askAi = (action: AiAction) => {
-    const currentFile = workspaceFiles[selectedFileName]
-    if (!currentFile) return
-
-    const targetPath =
-      action === 'generate-component' ? 'src/components/GeneratedPanel.tsx' : selectedFileName
-    const before = workspaceFiles[targetPath]?.value || ''
-    const after =
-      action === 'generate-component'
-        ? `export function GeneratedPanel() {\n  return (\n    <section className=\"generated-panel\">\n      <strong>AI generated component</strong>\n      <p>Mocked from the current workspace context.</p>\n    </section>\n  )\n}\n`
-        : `${currentFile.value}\n\n/* AI mock suggestion: extracted from ${currentFile.name} with VSCode-like WorkspaceEdit review. */\n`
-
-    const title =
-      action === 'explain-selection'
-        ? 'Explain current selection'
-        : action === 'generate-test'
-          ? 'Generate unit test scaffold'
-          : action === 'fix-error'
-            ? 'Analyze runtime error'
-            : action === 'refactor-file'
-              ? 'Refactor current file'
-              : 'Generate component example'
-
-    setPendingEdit({
-      id: makeEditId(),
-      title,
-      description: `Mock AI created a WorkspaceEdit for ${targetPath}. Review the diff before applying.`,
-      changes: [
-        {
-          path: targetPath,
-          before,
-          after,
-        },
-      ],
-    })
-    setActiveActivity('ai')
-    setAiMessages((messages) => [
-      ...messages,
-      {
-        id: makeEditId(),
-        role: 'user',
-        content: title,
-      },
-      {
-        id: makeEditId(),
-        role: 'assistant',
-        content: `已生成 ${targetPath} 的变更计划，等待你在 Diff Review 中确认。`,
-      },
-    ])
-  }
-
-  const applyWorkspaceEdit = () => {
-    if (!pendingEdit) return
-    setWorkspaceFiles((current) => {
-      const next = { ...current }
-      pendingEdit.changes.forEach((change) => {
-        const path = normalizePath(change.path)
-        const existing = next[path]
-        next[path] = {
-          ...createWorkspaceFile(path, change.after),
-          ...existing,
-          path,
-          name: fileNameFromPath(path),
-          value: change.after,
-          language: fileName2Language(path),
-          dirty: true,
-        }
-      })
-      return next
-    })
-    setOutput((logs) => [`Applied WorkspaceEdit: ${pendingEdit.title}`, ...logs])
-    setOpenTabs((tabs) => {
-      const nextTabs = [...tabs]
-      pendingEdit.changes.forEach((change) => {
-        const path = normalizePath(change.path)
-        if (!nextTabs.includes(path)) nextTabs.push(path)
-      })
-      return nextTabs
-    })
-    setSelectedFileNameState(normalizePath(pendingEdit.changes[0].path))
-    setPendingEdit(null)
-  }
-
-  const discardWorkspaceEdit = () => {
-    if (pendingEdit) {
-      setOutput((logs) => [`Discarded WorkspaceEdit: ${pendingEdit.title}`, ...logs])
-    }
-    setPendingEdit(null)
-  }
-
-  const executeCommand = (id: string) => {
-    const command = commands.find((item) => item.id === id)
-    command?.run()
-    setCommandPaletteOpen(false)
-  }
-
-  const commands = useMemo<WorkbenchCommand[]>(
-    () => [
-      {
-        id: 'workbench.action.showCommands',
-        title: 'Show Command Palette',
-        category: 'Workbench',
-        keybinding: '⌘⇧P',
-        run: () => setCommandPaletteOpen(true),
-      },
-      {
-        id: 'workbench.action.openPreview',
-        title: 'Open Preview Webview',
-        category: 'Webview',
-        run: () => {
-          setActivePanel('preview')
-          setPanelVisible(true)
-        },
-      },
-      {
-        id: 'workbench.action.toggleTheme',
-        title: 'Toggle Color Theme',
-        category: 'Preferences',
-        run: () => setTheme((current) => (current === 'dark' ? 'light' : 'dark')),
-      },
-      {
-        id: 'editor.action.formatDocument',
-        title: 'Format Document',
-        category: 'Editor',
-        keybinding: '⌘J',
-        run: () => {
-          formatFile(selectedFileName)
-          setOutput((logs) => [`Format applied to ${selectedFileName}`, ...logs])
-        },
-      },
-      {
-        id: 'ai.explainSelection',
-        title: 'AI: Explain Selection',
-        category: 'AI',
-        run: () => askAi('explain-selection'),
-      },
-      {
-        id: 'ai.generateComponent',
-        title: 'AI: Generate Component Example',
-        category: 'AI',
-        run: () => askAi('generate-component'),
-      },
-      {
-        id: 'workspace.applyEdit',
-        title: 'Apply Pending WorkspaceEdit',
-        category: 'Workspace',
-        run: applyWorkspaceEdit,
-      },
-    ],
-    [formatFile, pendingEdit, selectedFileName, workspaceFiles],
+    { setActiveActivity: layout.setActiveActivity },
   )
 
-  useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(files))
-    window.location.hash = compress(JSON.stringify(files))
-  }, [files])
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const commandOrControl = event.metaKey || event.ctrlKey
-      if (commandOrControl && event.shiftKey && event.key.toLowerCase() === 'p') {
-        event.preventDefault()
-        setCommandPaletteOpen(true)
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  // commands 依赖三个 hook 的能力
+  const { commands, executeCommand } = useCommands({
+    workspace: {
+      workspaceFiles: workspace.workspaceFiles,
+      selectedFileName: workspace.selectedFileName,
+      formatFile: workspace.formatFile,
+    },
+    layout: {
+      setCommandPaletteOpen: layout.setCommandPaletteOpen,
+      setActivePanel: layout.setActivePanel,
+      setPanelVisible: layout.setPanelVisible,
+      setTheme: layout.setTheme,
+    },
+    ai: {
+      pendingEdit: ai.pendingEdit,
+      setOutput: ai.setOutput,
+      askAi: ai.askAi,
+      applyWorkspaceEdit: ai.applyWorkspaceEdit,
+    },
+  })
 
   return (
     <PlaygroundContext.Provider
       value={{
-        activeActivity,
-        activePanel,
-        aiMessages,
-        applyWorkspaceEdit,
-        askAi,
-        closeTab,
-        commandPaletteOpen,
+        // workspace
+        files: workspace.files,
+        workspaceFiles: workspace.workspaceFiles,
+        tree: workspace.tree,
+        openTabs: workspace.openTabs,
+        selectedFileName: workspace.selectedFileName,
+        setSelectedFileName: workspace.setSelectedFileName,
+        setFiles: workspace.setFiles,
+        addFile: workspace.addFile,
+        removeFile: workspace.removeFile,
+        updateFileName: workspace.updateFileName,
+        updateFileValue: workspace.updateFileValue,
+        formatFile: workspace.formatFile,
+        closeTab: workspace.closeTab,
+        // layout
+        theme: layout.theme,
+        activeActivity: layout.activeActivity,
+        activePanel: layout.activePanel,
+        panelVisible: layout.panelVisible,
+        commandPaletteOpen: layout.commandPaletteOpen,
+        setTheme: layout.setTheme,
+        setActiveActivity: layout.setActiveActivity,
+        setActivePanel: layout.setActivePanel,
+        setPanelVisible: layout.setPanelVisible,
+        setCommandPaletteOpen: layout.setCommandPaletteOpen,
+        // ai
+        aiMessages: ai.aiMessages,
+        pendingEdit: ai.pendingEdit,
+        output: ai.output,
+        askAi: ai.askAi,
+        applyWorkspaceEdit: ai.applyWorkspaceEdit,
+        discardWorkspaceEdit: ai.discardWorkspaceEdit,
+        // commands
         commands,
-        discardWorkspaceEdit,
         executeCommand,
-        files,
-        formatFile,
-        openTabs,
-        output,
-        panelVisible,
-        pendingEdit,
-        removeFile,
-        selectedFileName,
-        setActiveActivity,
-        setActivePanel,
-        setCommandPaletteOpen,
-        setFiles,
-        setPanelVisible,
-        setSelectedFileName,
-        setTheme,
-        theme,
-        tree,
-        updateFileName,
-        updateFileValue,
-        workspaceFiles,
-        addFile,
       }}
     >
       {props.children}
