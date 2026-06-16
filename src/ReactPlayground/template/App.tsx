@@ -1,4 +1,3 @@
-// @ts-nocheck
 import metrics from './mock/dashboard.json'
 import { DataCard } from './components/DataCard'
 import './styles/App.css'
