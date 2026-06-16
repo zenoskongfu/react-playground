@@ -18,6 +18,7 @@ export default function Preview() {
     const { files} = useContext(PlaygroundContext)
     const [compiledCode, setCompiledCode] = useState('')
     const [error, setError] = useState('')
+    const [iframeContent, setIframeContent] = useState('')
 
     const compilerWorkerRef = useRef<Worker>();
 
@@ -27,9 +28,10 @@ export default function Preview() {
             compilerWorkerRef.current.addEventListener('message', ({data}) => {
                 console.log('worker', data);
                 if(data.type === 'COMPILED_CODE') {
+                    setError('')
                     setCompiledCode(data.data);
                 } else {
-                    // console.log('error', data);
+                    setError(String(data.error?.message || data.error || 'Compile failed'))
                 }
             })
         }
@@ -39,24 +41,22 @@ export default function Preview() {
         compilerWorkerRef.current?.postMessage(files)
     }, 500), [files]);
 
-    const getIframeUrl = () => {
-        const res = iframeRaw.replace(
+    const getIframeContent = () => {
+        const importMap = files[IMPORT_MAP_FILE_NAME]?.value || '{"imports":{}}'
+        return iframeRaw.replace(
             '<script type="importmap"></script>', 
             `<script type="importmap">${
-                files[IMPORT_MAP_FILE_NAME].value
+                importMap
             }</script>`
         ).replace(
             '<script type="module" id="appSrc"></script>',
             `<script type="module" id="appSrc">${compiledCode}</script>`,
         )
-        return URL.createObjectURL(new Blob([res], { type: 'text/html' }))
     }
 
     useEffect(() => {
-        setIframeUrl(getIframeUrl())
-    }, [files[IMPORT_MAP_FILE_NAME].value, compiledCode]);
-
-    const [iframeUrl, setIframeUrl] = useState(getIframeUrl());
+        setIframeContent(getIframeContent())
+    }, [files, compiledCode]);
 
     const handleMessage = (msg: MessageData) => {
         const { type, message } = msg.data
@@ -74,7 +74,7 @@ export default function Preview() {
 
     return <div style={{height: '100%'}}>
         <iframe
-            src={iframeUrl}
+            srcDoc={iframeContent}
             style={{
                 width: '100%',
                 height: '100%',

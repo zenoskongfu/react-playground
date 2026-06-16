@@ -2,6 +2,8 @@ import { transform } from '@babel/standalone'
 import { File, Files } from '../../PlaygroundContext'
 import { ENTRY_FILE_NAME } from '../../files'
 
+const LEGACY_ENTRY_FILE_NAME = 'main.tsx'
+
 export const beforeTransformCode = (filename: string, code: string) => {
     let _code = code
     const regexReact = /import\s+React/g
@@ -114,8 +116,11 @@ function customResolver(files: Files, filename: string) {
 }
 
 export const compile = (files: Files) => {
-  const main = files[ENTRY_FILE_NAME]
-  return babelTransform(ENTRY_FILE_NAME, main.value, files)
+  const main = files[ENTRY_FILE_NAME] || files[LEGACY_ENTRY_FILE_NAME]
+  if (!main) {
+    throw new Error(`Entry file not found. Expected ${ENTRY_FILE_NAME} or ${LEGACY_ENTRY_FILE_NAME}.`)
+  }
+  return babelTransform(main.name, main.value, files)
 }
 
 self.addEventListener('message', async ({ data }) => {

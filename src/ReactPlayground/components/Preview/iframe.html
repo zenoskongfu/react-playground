@@ -10,9 +10,15 @@
     window.addEventListener('error', (e) => {
         window.parent.postMessage({type: 'ERROR', message: e.message})
     })
+    window.addEventListener('unhandledrejection', (e) => {
+        window.parent.postMessage({
+          type: 'ERROR',
+          message: e.reason?.message || String(e.reason || 'Unhandled promise rejection'),
+        })
+    })
 </script>
+<div id="root"></div>
 <script type="importmap"></script>
 <script type="module" id="appSrc"></script>
-<div id="root"></div>
 </body>
 </html>

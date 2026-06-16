@@ -104,7 +104,13 @@ button {
 
 .workbench-body {
   display: grid;
-  grid-template-columns: 48px 286px minmax(0, 1fr);
+  grid-template-columns: 48px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.workbench-main-split,
+.workbench-editor-split {
+  height: 100%;
   min-height: 0;
 }
 
@@ -140,9 +146,9 @@ button {
 }
 
 .primary-sidebar {
+  height: 100%;
   min-width: 0;
   background: var(--sidebar-bg);
-  border-right: 1px solid var(--border);
 }
 
 .sidebar-header {
@@ -174,7 +180,8 @@ button {
 
 .tree-row-wrap.active,
 .tree-row:hover,
-.tree-row-wrap:hover {
+.tree-row-wrap:hover,
+.tree-row.active {
   background: var(--button-hover);
 }
 
@@ -201,9 +208,15 @@ button {
 .tree-row input {
   min-width: 0;
   width: 100%;
+  height: 20px;
+  padding: 0 4px;
   color: var(--text);
   background: var(--editor-bg);
   border: 1px solid var(--status-bg);
+}
+
+.tree-row-wrap--draft {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .tree-action {
@@ -216,8 +229,9 @@ button {
 }
 
 .editor-workbench {
-  display: grid;
-  grid-template-rows: 36px 35px minmax(0, 1fr) 260px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   background: var(--editor-bg);
@@ -302,6 +316,7 @@ button {
 
 .editor-stack,
 .editor-host {
+  min-width: 0;
   min-height: 0;
   width: 100%;
   height: 100%;
@@ -312,6 +327,7 @@ button {
 }
 
 .bottom-panel {
+  height: 100%;
   min-height: 0;
   background: var(--panel-bg);
   border-top: 1px solid var(--border);
@@ -446,4 +462,21 @@ button {
   color: var(--status-fg);
   background: var(--status-bg);
   font-size: 12px;
+}
+
+.split-view-view-visible > .primary-sidebar,
+.split-view-view-visible > .editor-workbench,
+.split-view-view-visible > .bottom-panel,
+.split-view-view-visible > .editor-stack,
+.split-view-view-visible > .workbench-editor-split {
+  height: 100%;
+}
+
+.split-view-sash {
+  background: transparent;
+}
+
+.split-view-sash::before {
+  background: var(--border);
+  opacity: 1;
 }

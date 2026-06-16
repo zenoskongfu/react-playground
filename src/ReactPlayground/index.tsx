@@ -1,4 +1,6 @@
-import { useContext, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useState } from 'react'
+import { Allotment } from 'allotment'
+import 'allotment/dist/style.css'
 import {
   ApiOutlined,
   BranchesOutlined,
@@ -29,8 +31,64 @@ const activityItems = [
   { id: 'ai', label: 'AI Assistant', icon: RobotOutlined },
 ] as const
 
-function TreeNodeView(props: { node: WorkspaceTreeNode; depth: number }) {
-  const { node, depth } = props
+interface PendingTreeFile {
+  parentPath: string
+}
+
+function FileDraftRow(props: {
+  depth: number
+  onCancel: () => void
+  onSubmit: (name: string) => void
+}) {
+  const { depth, onCancel, onSubmit } = props
+  const [draftName, setDraftName] = useState('')
+
+  const commit = () => {
+    const nextName = draftName.trim()
+    if (!nextName) {
+      onCancel()
+      return
+    }
+    onSubmit(nextName)
+  }
+
+  return (
+    <div className="tree-row-wrap tree-row-wrap--draft" style={{ paddingLeft: 10 + depth * 14 }}>
+      <div className="tree-row tree-row--file">
+        <FileOutlined />
+        <input
+          value={draftName}
+          onBlur={commit}
+          onChange={(event) => setDraftName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') commit()
+            if (event.key === 'Escape') onCancel()
+          }}
+          autoFocus
+        />
+      </div>
+    </div>
+  )
+}
+
+function TreeNodeView(props: {
+  node: WorkspaceTreeNode
+  depth: number
+  onSelectNode: (path: string, type: WorkspaceTreeNode['type']) => void
+  pendingFile: PendingTreeFile | null
+  onCancelPendingFile: () => void
+  onCreatePendingFile: (name: string, parentPath: string) => void
+  selectedTreePath: string
+}) {
+  const {
+    node,
+    depth,
+    onCancelPendingFile,
+    onCreatePendingFile,
+    onSelectNode,
+    pendingFile,
+    selectedTreePath,
+  } = props
   const { removeFile, selectedFileName, setSelectedFileName, updateFileName } =
     useContext(PlaygroundContext)
   const [expanded, setExpanded] = useState(true)
@@ -41,18 +99,41 @@ function TreeNodeView(props: { node: WorkspaceTreeNode; depth: number }) {
     return (
       <div>
         <button
-          className="tree-row tree-row--folder"
+          className={selectedTreePath === node.path ? 'tree-row tree-row--folder active' : 'tree-row tree-row--folder'}
           style={{ paddingLeft: 10 + depth * 14 }}
-          onClick={() => setExpanded((value) => !value)}
+          onClick={() => {
+            onSelectNode(node.path, 'folder')
+            setExpanded((value) => !value)
+          }}
           title={node.path}
         >
           <FolderOpenOutlined />
           <span>{node.name}</span>
         </button>
         {expanded
-          ? node.children?.map((child) => (
-              <TreeNodeView key={child.path} node={child} depth={depth + 1} />
-            ))
+          ? (
+              <>
+                {node.children?.map((child) => (
+                  <TreeNodeView
+                    key={child.path}
+                    depth={depth + 1}
+                    node={child}
+                    onCancelPendingFile={onCancelPendingFile}
+                    onCreatePendingFile={onCreatePendingFile}
+                    onSelectNode={onSelectNode}
+                    pendingFile={pendingFile}
+                    selectedTreePath={selectedTreePath}
+                  />
+                ))}
+                {pendingFile?.parentPath === node.path ? (
+                  <FileDraftRow
+                    depth={depth + 1}
+                    onCancel={onCancelPendingFile}
+                    onSubmit={(name) => onCreatePendingFile(name, node.path)}
+                  />
+                ) : null}
+              </>
+            )
           : null}
       </div>
     )
@@ -72,7 +153,10 @@ function TreeNodeView(props: { node: WorkspaceTreeNode; depth: number }) {
     >
       <button
         className="tree-row tree-row--file"
-        onClick={() => setSelectedFileName(node.path)}
+        onClick={() => {
+          onSelectNode(node.path, 'file')
+          setSelectedFileName(node.path)
+        }}
         title={node.path}
       >
         <FileOutlined />
@@ -104,7 +188,15 @@ function TreeNodeView(props: { node: WorkspaceTreeNode; depth: number }) {
 }
 
 function PrimarySideBar() {
-  const { activeActivity, addFile, aiMessages, tree } = useContext(PlaygroundContext)
+  const { activeActivity, addFile, aiMessages, selectedFileName, tree } = useContext(PlaygroundContext)
+  const [pendingFile, setPendingFile] = useState<PendingTreeFile | null>(null)
+  const [selectedTreePath, setSelectedTreePath] = useState(selectedFileName)
+  const [selectedTreeType, setSelectedTreeType] = useState<WorkspaceTreeNode['type']>('file')
+
+  useEffect(() => {
+    setSelectedTreePath(selectedFileName)
+    setSelectedTreeType('file')
+  }, [selectedFileName])
 
   if (activeActivity === 'ai') {
     return (
@@ -138,18 +230,57 @@ function PrimarySideBar() {
     )
   }
 
+  const handleSelectNode = (path: string, type: WorkspaceTreeNode['type']) => {
+    setSelectedTreePath(path)
+    setSelectedTreeType(type)
+  }
+
+  const handleCreateFile = () => {
+    const parentPath =
+      selectedTreeType === 'folder'
+        ? selectedTreePath
+        : selectedTreePath.includes('/')
+          ? selectedTreePath.split('/').slice(0, -1).join('/')
+          : ''
+    setPendingFile({ parentPath })
+  }
+
+  const commitPendingFile = (name: string, parentPath: string) => {
+    const nextPath = parentPath ? `${parentPath}/${name}` : name
+    addFile(nextPath)
+    setSelectedTreePath(nextPath)
+    setSelectedTreeType('file')
+    setPendingFile(null)
+  }
+
   return (
     <aside className="primary-sidebar">
       <header className="sidebar-header">
         <span>Explorer</span>
-        <button onClick={() => addFile('src/components/NewComponent.tsx')} title="New file">
+        <button onClick={handleCreateFile} title="New file">
           <FileAddOutlined />
         </button>
       </header>
       <div className="workspace-name">WORKSPACE</div>
       <nav className="tree">
+        {pendingFile?.parentPath === '' ? (
+          <FileDraftRow
+            depth={0}
+            onCancel={() => setPendingFile(null)}
+            onSubmit={(name) => commitPendingFile(name, '')}
+          />
+        ) : null}
         {tree.map((node) => (
-          <TreeNodeView key={node.path} node={node} depth={0} />
+          <TreeNodeView
+            key={node.path}
+            depth={0}
+            node={node}
+            onCancelPendingFile={() => setPendingFile(null)}
+            onCreatePendingFile={commitPendingFile}
+            onSelectNode={handleSelectNode}
+            pendingFile={pendingFile}
+            selectedTreePath={selectedTreePath}
+          />
         ))}
       </nav>
     </aside>
@@ -288,15 +419,16 @@ export default function ReactPlayground() {
   const {
     activeActivity,
     files,
+    formatFile,
     pendingEdit,
     selectedFileName,
     setActiveActivity,
     setCommandPaletteOpen,
     setTheme,
     theme,
+    executeCommand,
     updateFileValue,
     workspaceFiles,
-    executeCommand,
   } = useContext(PlaygroundContext)
   const selectedFile = workspaceFiles[selectedFileName]
 
@@ -347,21 +479,31 @@ export default function ReactPlayground() {
             <SettingOutlined />
           </button>
         </nav>
-
-        <PrimarySideBar />
-
-        <main className="editor-workbench">
-          <EditorTabs />
-          <AiActionBar />
-          <WorkbenchEditor
-            file={selectedFile}
-            pendingEdit={pendingEdit}
-            theme={theme}
-            onChange={updateFileValue}
-            onFormat={() => executeCommand('editor.action.formatDocument')}
-          />
-          <Panel />
-        </main>
+        <Allotment className="workbench-main-split" defaultSizes={[24, 76]}>
+          <Allotment.Pane minSize={220} preferredSize={286}>
+            <PrimarySideBar />
+          </Allotment.Pane>
+          <Allotment.Pane minSize={420}>
+            <main className="editor-workbench">
+              <EditorTabs />
+              <AiActionBar />
+              <Allotment vertical className="workbench-editor-split" defaultSizes={[72, 28]}>
+                <Allotment.Pane minSize={220}>
+                  <WorkbenchEditor
+                    file={selectedFile}
+                    pendingEdit={pendingEdit}
+                    theme={theme}
+                    onChange={updateFileValue}
+                    onFormat={() => formatFile(selectedFileName)}
+                  />
+                </Allotment.Pane>
+                <Allotment.Pane minSize={120}>
+                  <Panel />
+                </Allotment.Pane>
+              </Allotment>
+            </main>
+          </Allotment.Pane>
+        </Allotment>
       </div>
 
       <footer className="statusbar">

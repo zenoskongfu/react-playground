@@ -87,6 +87,7 @@ interface PlaygroundContextValue {
   removeFile: (fileName: string) => void
   updateFileName: (oldFileName: string, newFileName: string) => void
   updateFileValue: (fileName: string, value: string) => void
+  formatFile: (fileName: string) => void
   closeTab: (fileName: string) => void
   executeCommand: (id: string) => void
   askAi: (action: AiAction) => void
@@ -113,7 +114,10 @@ const isStaleWorkspace = (files: Files) => {
   const hasStaleTemplate = Object.values(files).some((file) =>
     file.value.includes('@ts-nocheck'),
   )
-  return hasLegacyFlatTemplate || hasStaleTemplate
+  const importMap = files['import-map.json']?.value || ''
+  const hasLegacyImportMap = importMap.includes('"react-dom/client": "https://esm.sh/react-dom@18.2.0"')
+  const hasLegacyMainEntry = files['src/main.tsx']?.value.includes("import ReactDOM from 'react-dom/client'") || false
+  return hasLegacyFlatTemplate || hasStaleTemplate || hasLegacyImportMap || hasLegacyMainEntry
 }
 
 const getFilesFromStorage = () => {
@@ -273,6 +277,22 @@ export const PlaygroundProvider = (props: PropsWithChildren) => {
         [normalizedPath]: {
           ...file,
           value,
+          dirty: true,
+        },
+      }
+    })
+  }
+
+  const formatFile = (fileName: string) => {
+    const normalizedPath = normalizePath(fileName)
+    setWorkspaceFiles((current) => {
+      const file = current[normalizedPath]
+      if (!file || file.readonly) return current
+      return {
+        ...current,
+        [normalizedPath]: {
+          ...file,
+          value: file.value.trimEnd() ? `${file.value.trimEnd()}\n` : file.value,
           dirty: true,
         },
       }
@@ -469,7 +489,10 @@ export const PlaygroundProvider = (props: PropsWithChildren) => {
         title: 'Format Document',
         category: 'Editor',
         keybinding: '⌘J',
-        run: () => setOutput((logs) => [`Format requested for ${selectedFileName}`, ...logs]),
+        run: () => {
+          formatFile(selectedFileName)
+          setOutput((logs) => [`Format applied to ${selectedFileName}`, ...logs])
+        },
       },
       {
         id: 'ai.explainSelection',
@@ -490,7 +513,7 @@ export const PlaygroundProvider = (props: PropsWithChildren) => {
         run: applyWorkspaceEdit,
       },
     ],
-    [pendingEdit, selectedFileName, workspaceFiles],
+    [formatFile, pendingEdit, selectedFileName, workspaceFiles],
   )
 
   useEffect(() => {
@@ -524,6 +547,7 @@ export const PlaygroundProvider = (props: PropsWithChildren) => {
         discardWorkspaceEdit,
         executeCommand,
         files,
+        formatFile,
         openTabs,
         output,
         panelVisible,
