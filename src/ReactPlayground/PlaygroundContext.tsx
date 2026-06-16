@@ -110,7 +110,12 @@ const STORAGE_KEY = 'vscode-web-playground-workspace-v2'
 const getFilesFromStorage = () => {
   try {
     const cached = window.localStorage.getItem(STORAGE_KEY)
-    return cached ? (JSON.parse(cached) as Files) : undefined
+    if (!cached) return undefined
+    const files = JSON.parse(cached) as Files
+    const hasStaleTemplate = Object.values(files).some((file) =>
+      file.value.includes('@ts-nocheck'),
+    )
+    return hasStaleTemplate ? undefined : files
   } catch (error) {
     console.error(error)
     return undefined
