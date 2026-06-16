@@ -12,6 +12,10 @@ export const fileName2Language = (name: string) => {
     return 'javascript'
 }
 
+export const normalizePath = (path: string) => {
+    return path.replace(/^file:\/\/\/workspace\//, '').replace(/^\/+/, '')
+}
+
 export function compress(data: string): string {
     const buffer = strToU8(data)
     const zipped = zlibSync(buffer, { level: 9 })

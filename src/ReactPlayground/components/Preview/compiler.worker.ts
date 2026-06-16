@@ -1,7 +1,6 @@
 import { transform } from '@babel/standalone'
 import { File, Files } from '../../PlaygroundContext'
 import { ENTRY_FILE_NAME } from '../../files'
-import { PluginObj } from '@babel/core';
 
 export const beforeTransformCode = (filename: string, code: string) => {
     let _code = code
@@ -19,7 +18,7 @@ export const babelTransform = (filename: string, code: string, files: Files) => 
         result = transform(_code, {
         presets: ['react', 'typescript'],
         filename,
-        plugins: [customResolver(files)],
+        plugins: [customResolver(files, filename)],
         retainLines: true
         }).code!
     } catch (e) {
@@ -28,17 +27,37 @@ export const babelTransform = (filename: string, code: string, files: Files) => 
     return result
 }
 
-const getModuleFile = (files: Files, modulePath: string) => {
-    let moduleName = modulePath.split('./').pop() || ''
+const dirname = (path: string) => path.split('/').slice(0, -1).join('/')
+
+const normalizeSegments = (path: string) => {
+    const parts: string[] = []
+    path.split('/').forEach((part) => {
+        if (!part || part === '.') return
+        if (part === '..') {
+            parts.pop()
+            return
+        }
+        parts.push(part)
+    })
+    return parts.join('/')
+}
+
+const getModuleFile = (files: Files, importer: string, modulePath: string) => {
+    let moduleName = normalizeSegments(`${dirname(importer)}/${modulePath}`)
+    const exactFile = files[moduleName]
+    if (exactFile) return exactFile
+
     if (!moduleName.includes('.')) {
-        const realModuleName = Object.keys(files).filter(key => {
-            return key.endsWith('.ts') 
-                || key.endsWith('.tsx') 
-                || key.endsWith('.js')
-                || key.endsWith('.jsx')
-        }).find((key) => {
-            return key.split('.').includes(moduleName)
-        })
+        const realModuleName = [
+            `${moduleName}.ts`,
+            `${moduleName}.tsx`,
+            `${moduleName}.js`,
+            `${moduleName}.jsx`,
+            `${moduleName}.json`,
+            `${moduleName}.css`,
+            `${moduleName}/index.ts`,
+            `${moduleName}/index.tsx`,
+        ].find((key) => files[key])
         if (realModuleName) {
             moduleName = realModuleName
         }
@@ -67,13 +86,13 @@ const css2Js = (file: File) => {
     return URL.createObjectURL(new Blob([js], { type: 'application/javascript' }))
 }
 
-function customResolver(files: Files): PluginObj {
+function customResolver(files: Files, filename: string) {
     return {
         visitor: {
-            ImportDeclaration(path) {
+            ImportDeclaration(path: any) {
                 const modulePath = path.node.source.value
                 if(modulePath.startsWith('.')) {
-                    const file = getModuleFile(files, modulePath)
+                    const file = getModuleFile(files, filename, modulePath)
                     if(!file) 
                         return
 

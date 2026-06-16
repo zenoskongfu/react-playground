@@ -1,65 +1,75 @@
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  font-weight: 400;
-  line-height: 1.5;
-  color: rgb(255 255 255 / 87%);
-  text-rendering: optimizelegibility;
-  text-size-adjust: 100%;
-  background-color: #242424;
-  color-scheme: light dark;
+  font-family: "SF Pro Text", "Segoe UI", sans-serif;
+  color: #d4d4d4;
+  background: #1e1e1e;
   font-synthesis: none;
-}
-
-#root {
-  max-width: 1280px;
-  padding: 2rem;
-  margin: 0 auto;
-  text-align: center;
+  text-rendering: optimizelegibility;
 }
 
 body {
-  display: flex;
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  place-items: center;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+.workspace-preview {
+  min-height: 100vh;
+  padding: 48px;
+  background:
+    linear-gradient(135deg, rgb(15 23 42 / 92%), rgb(17 24 39 / 86%)),
+    repeating-linear-gradient(90deg, rgb(255 255 255 / 5%) 0 1px, transparent 1px 56px);
 }
 
-button {
-  padding: 0.6em 1.2em;
-  font-family: inherit;
-  font-size: 1em;
-  font-weight: 500;
-  cursor: pointer;
-  background-color: #1a1a1a;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  transition: border-color 0.25s;
+.preview-header {
+  max-width: 720px;
 }
 
-button:hover {
-  border-color: #646cff;
+.preview-header span {
+  color: #4fc1ff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+.preview-header h1 {
+  margin: 12px 0;
+  color: #fff;
+  font-size: 40px;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #fff;
-  }
+.preview-header p {
+  color: #aeb6c2;
+}
 
-  button {
-    background-color: #f9f9f9;
-  }
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  max-width: 820px;
+  margin-top: 32px;
+}
+
+.data-card {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  background: rgb(22 27 34 / 88%);
+  border: 1px solid rgb(148 163 184 / 22%);
+  border-radius: 6px;
+}
+
+.data-card span {
+  color: #9fb0c6;
+  font-size: 12px;
+}
+
+.data-card strong {
+  color: #f8fafc;
+  font-size: 30px;
+}
+
+.data-card em {
+  color: #8bd450;
+  font-style: normal;
 }
