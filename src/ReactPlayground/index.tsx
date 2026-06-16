@@ -4,7 +4,7 @@ import {
   BranchesOutlined,
   CloseOutlined,
   CodeOutlined,
-  CopyOutlined,
+  DownloadOutlined,
   FileAddOutlined,
   FileOutlined,
   FolderOpenOutlined,
@@ -317,7 +317,7 @@ export default function ReactPlayground() {
             <PlayCircleOutlined />
           </button>
           <button onClick={() => downloadFiles(files)} title="Download workspace">
-            <CopyOutlined />
+            <DownloadOutlined />
           </button>
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}

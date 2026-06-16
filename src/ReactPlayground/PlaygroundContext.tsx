@@ -105,7 +105,7 @@ export const PlaygroundContext = createContext<PlaygroundContextValue>({
   selectedFileName: 'src/App.tsx',
 } as PlaygroundContextValue)
 
-const STORAGE_KEY = 'vscode-web-playground-workspace'
+const STORAGE_KEY = 'vscode-web-playground-workspace-v2'
 
 const getFilesFromStorage = () => {
   try {
