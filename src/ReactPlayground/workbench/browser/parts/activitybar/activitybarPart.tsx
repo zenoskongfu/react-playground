@@ -1,4 +1,4 @@
-import { useContext } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import {
   ApiOutlined,
   BranchesOutlined,
@@ -7,7 +7,7 @@ import {
   SearchOutlined,
   SettingOutlined,
 } from '@ant-design/icons'
-import { PlaygroundContext } from '../../../../PlaygroundContext'
+import { useLayoutStore } from '../../../stores/layoutStore'
 
 const activityItems = [
   { id: 'explorer', label: 'Explorer', icon: FolderOpenOutlined },
@@ -18,7 +18,9 @@ const activityItems = [
 ] as const
 
 export default function ActivitybarPart() {
-  const { activeActivity, setActiveActivity } = useContext(PlaygroundContext)
+  const { activeActivity, setActiveActivity } = useLayoutStore(
+    useShallow((s) => ({ activeActivity: s.activeActivity, setActiveActivity: s.setActiveActivity })),
+  )
 
   return (
     <nav className="activity-bar">

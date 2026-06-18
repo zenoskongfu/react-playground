@@ -1,10 +1,18 @@
-import { useContext } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { CloseOutlined, FileOutlined } from '@ant-design/icons'
-import { PlaygroundContext } from '../../../../PlaygroundContext'
+import { useWorkspaceStore } from '../../../stores/workspaceStore'
 
 export default function EditorGroupsView() {
   const { closeTab, openTabs, selectedFileName, setSelectedFileName, workspaceFiles } =
-    useContext(PlaygroundContext)
+    useWorkspaceStore(
+      useShallow((s) => ({
+        closeTab: s.closeTab,
+        openTabs: s.openTabs,
+        selectedFileName: s.selectedFileName,
+        setSelectedFileName: s.setSelectedFileName,
+        workspaceFiles: s.workspaceFiles,
+      })),
+    )
 
   return (
     <div className="editor-tabs">

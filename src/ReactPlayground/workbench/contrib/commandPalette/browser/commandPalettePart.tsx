@@ -1,9 +1,18 @@
-import { useContext, useMemo, useState } from 'react'
-import { PlaygroundContext } from '../../../../PlaygroundContext'
+import { useMemo, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
+import { useLayoutStore } from '../../../stores/layoutStore'
+import { useCommandsStore } from '../../../stores/commandsStore'
 
 export default function CommandPalette() {
-  const { commandPaletteOpen, commands, executeCommand, setCommandPaletteOpen } =
-    useContext(PlaygroundContext)
+  const { commandPaletteOpen, setCommandPaletteOpen } = useLayoutStore(
+    useShallow((s) => ({
+      commandPaletteOpen: s.commandPaletteOpen,
+      setCommandPaletteOpen: s.setCommandPaletteOpen,
+    })),
+  )
+  const { commands, executeCommand } = useCommandsStore(
+    useShallow((s) => ({ commands: s.commands, executeCommand: s.executeCommand })),
+  )
   const [query, setQuery] = useState('')
   const filteredCommands = useMemo(
     () =>

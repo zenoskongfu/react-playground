@@ -1,7 +1,9 @@
-import { useContext } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { Allotment } from 'allotment'
 import 'allotment/dist/style.css'
-import { PlaygroundContext } from '../../PlaygroundContext'
+import { useWorkspaceStore } from '../stores/workspaceStore'
+import { useLayoutStore } from '../stores/layoutStore'
+import { useAiStore } from '../stores/aiStore'
 import WorkbenchEditor from './parts/editor/workbenchEditor'
 import EditorGroupsView from './parts/editor/editorGroupsView'
 import PanelPart from './parts/panel/panelPart'
@@ -14,14 +16,16 @@ import AiActionBar from '../contrib/aiAssistant/browser/aiActionBar'
 import '../../index.scss'
 
 export default function Workbench() {
-  const {
-    pendingEdit,
-    selectedFileName,
-    theme,
-    formatFile,
-    updateFileValue,
-    workspaceFiles,
-  } = useContext(PlaygroundContext)
+  const { selectedFileName, workspaceFiles, updateFileValue, formatFile } = useWorkspaceStore(
+    useShallow((s) => ({
+      selectedFileName: s.selectedFileName,
+      workspaceFiles: s.workspaceFiles,
+      updateFileValue: s.updateFileValue,
+      formatFile: s.formatFile,
+    })),
+  )
+  const theme = useLayoutStore((s) => s.theme)
+  const pendingEdit = useAiStore((s) => s.pendingEdit)
 
   const selectedFile = workspaceFiles[selectedFileName]
 

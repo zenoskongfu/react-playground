@@ -1,8 +1,7 @@
-import { useContext } from 'react'
-import { PlaygroundContext } from '../../../../PlaygroundContext'
+import { useWorkspaceStore } from '../../../stores/workspaceStore'
 
 export default function StatusbarPart() {
-  const { selectedFileName } = useContext(PlaygroundContext)
+  const selectedFileName = useWorkspaceStore((s) => s.selectedFileName)
 
   return (
     <footer className="statusbar">

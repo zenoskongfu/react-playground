@@ -1,6 +1,10 @@
-import { useContext, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { CodeOutlined, FileAddOutlined } from '@ant-design/icons'
-import { PlaygroundContext, WorkspaceTreeNode } from '../../../../PlaygroundContext'
+import { WorkspaceTreeNode } from '../../../../PlaygroundContext'
+import { useWorkspaceStore } from '../../../stores/workspaceStore'
+import { useLayoutStore } from '../../../stores/layoutStore'
+import { useAiStore } from '../../../stores/aiStore'
 import { FileDraftRow, PendingTreeFile, TreeNodeView } from './fileTree'
 
 const activityLabels: Record<string, string> = {
@@ -10,8 +14,16 @@ const activityLabels: Record<string, string> = {
 }
 
 export default function ExplorerView() {
-  const { activeActivity, addFile, aiMessages, selectedFileName, tree } =
-    useContext(PlaygroundContext)
+  const { addFile, selectedFileName, tree } = useWorkspaceStore(
+    useShallow((s) => ({
+      addFile: s.addFile,
+      selectedFileName: s.selectedFileName,
+      tree: s.tree,
+    })),
+  )
+  const activeActivity = useLayoutStore((s) => s.activeActivity)
+  const aiMessages = useAiStore((s) => s.aiMessages)
+
   const [pendingFile, setPendingFile] = useState<PendingTreeFile | null>(null)
   const [selectedTreePath, setSelectedTreePath] = useState(selectedFileName)
   const [selectedTreeType, setSelectedTreeType] = useState<WorkspaceTreeNode['type']>('file')

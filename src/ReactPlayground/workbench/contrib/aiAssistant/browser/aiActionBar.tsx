@@ -1,9 +1,15 @@
-import { useContext } from 'react'
-import { PlaygroundContext } from '../../../../PlaygroundContext'
+import { useShallow } from 'zustand/react/shallow'
+import { useAiStore } from '../../../stores/aiStore'
 
 export default function AiActionBar() {
-  const { askAi, pendingEdit, applyWorkspaceEdit, discardWorkspaceEdit } =
-    useContext(PlaygroundContext)
+  const { askAi, pendingEdit, applyWorkspaceEdit, discardWorkspaceEdit } = useAiStore(
+    useShallow((s) => ({
+      askAi: s.askAi,
+      pendingEdit: s.pendingEdit,
+      applyWorkspaceEdit: s.applyWorkspaceEdit,
+      discardWorkspaceEdit: s.discardWorkspaceEdit,
+    })),
+  )
 
   return (
     <div className="ai-action-bar">

@@ -1,6 +1,8 @@
-import { useContext, useState } from 'react'
+import { useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { CloseOutlined, FileOutlined, FolderOpenOutlined } from '@ant-design/icons'
-import { PlaygroundContext, WorkspaceTreeNode } from '../../../../PlaygroundContext'
+import { WorkspaceTreeNode } from '../../../../PlaygroundContext'
+import { useWorkspaceStore } from '../../../stores/workspaceStore'
 
 export interface PendingTreeFile {
   parentPath: string
@@ -60,8 +62,14 @@ export function TreeNodeView(props: {
     pendingFile,
     selectedTreePath,
   } = props
-  const { removeFile, selectedFileName, setSelectedFileName, updateFileName } =
-    useContext(PlaygroundContext)
+  const { removeFile, selectedFileName, setSelectedFileName, updateFileName } = useWorkspaceStore(
+    useShallow((s) => ({
+      removeFile: s.removeFile,
+      selectedFileName: s.selectedFileName,
+      setSelectedFileName: s.setSelectedFileName,
+      updateFileName: s.updateFileName,
+    })),
+  )
   const [expanded, setExpanded] = useState(true)
   const [editing, setEditing] = useState(false)
   const [draftName, setDraftName] = useState(node.name)

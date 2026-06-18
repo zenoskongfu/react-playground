@@ -13,8 +13,8 @@
  *   5. 错误不刷新预览：编译失败时保留上次成功的预览，不显示空白页
  */
 
-import { useCallback, useContext, useEffect, useRef, useState } from 'react'
-import { PlaygroundContext } from '../../../../PlaygroundContext'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useWorkspaceStore } from '../../../stores/workspaceStore'
 import iframeRaw from './iframe.html?raw'        // 预览的 HTML 模板，?raw 表示作为字符串导入
 import { IMPORT_MAP_FILE_NAME } from '../../../../files'
 import { Message } from '../../../../components/Message'
@@ -28,7 +28,7 @@ interface IframeMessage {
 }
 
 export default function PreviewView() {
-    const { files } = useContext(PlaygroundContext)
+    const files = useWorkspaceStore((s) => s.files)
     const [error, setError] = useState('')
     // iframeContent 用 srcDoc 注入到 iframe，变化时 iframe 会重新加载页面
     const [iframeContent, setIframeContent] = useState('')

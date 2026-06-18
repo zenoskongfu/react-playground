@@ -1,11 +1,19 @@
-import { useContext } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { CloseOutlined } from '@ant-design/icons'
-import { PlaygroundContext } from '../../../../PlaygroundContext'
+import { useLayoutStore } from '../../../stores/layoutStore'
+import { useAiStore } from '../../../stores/aiStore'
 import PreviewView from '../../../contrib/preview/browser/previewView'
 
 export default function PanelPart() {
-  const { activePanel, output, panelVisible, setActivePanel, setPanelVisible } =
-    useContext(PlaygroundContext)
+  const { activePanel, panelVisible, setActivePanel, setPanelVisible } = useLayoutStore(
+    useShallow((s) => ({
+      activePanel: s.activePanel,
+      panelVisible: s.panelVisible,
+      setActivePanel: s.setActivePanel,
+      setPanelVisible: s.setPanelVisible,
+    })),
+  )
+  const output = useAiStore((s) => s.output)
 
   if (!panelVisible) return null
 

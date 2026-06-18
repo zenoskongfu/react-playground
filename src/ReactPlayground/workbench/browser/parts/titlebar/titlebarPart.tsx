@@ -1,11 +1,20 @@
-import { useContext } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { DownloadOutlined, MoonOutlined, PlayCircleOutlined, SunOutlined } from '@ant-design/icons'
-import { PlaygroundContext } from '../../../../PlaygroundContext'
+import { useLayoutStore } from '../../../stores/layoutStore'
+import { useWorkspaceStore } from '../../../stores/workspaceStore'
+import { useCommandsStore } from '../../../stores/commandsStore'
 import { downloadFiles } from '../../../../utils'
 
 export default function TitlebarPart() {
-  const { executeCommand, files, setCommandPaletteOpen, setTheme, theme } =
-    useContext(PlaygroundContext)
+  const { setCommandPaletteOpen, setTheme, theme } = useLayoutStore(
+    useShallow((s) => ({
+      setCommandPaletteOpen: s.setCommandPaletteOpen,
+      setTheme: s.setTheme,
+      theme: s.theme,
+    })),
+  )
+  const files = useWorkspaceStore((s) => s.files)
+  const executeCommand = useCommandsStore((s) => s.executeCommand)
 
   return (
     <header className="titlebar">
